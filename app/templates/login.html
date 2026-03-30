@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Login | Monitoramento Hospitalar</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body class="login-body">
+  <main class="login-card">
+    <h1>Monitoramento Hospitalar</h1>
+    <p>Entre para visualizar alertas ativos por área.</p>
+
+    {% if error %}
+      <div class="error">{{ error }}</div>
+    {% endif %}
+
+    <form method="post" action="/login" class="form">
+      <label>Usuário
+        <input type="text" name="username" required />
+      </label>
+      <label>Senha
+        <input type="password" name="password" required />
+      </label>
+      <button type="submit">Entrar</button>
+    </form>
+  </main>
+</body>
+</html>

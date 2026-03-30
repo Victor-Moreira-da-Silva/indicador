@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Painel | Monitoramento Hospitalar</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>Painel de Alertas Ativos</h1>
+      <small>Atualizado em {{ generated_at }}</small>
+    </div>
+    <a href="/logout">Sair</a>
+  </header>
+
+  <main>
+    <div class="tabs" role="tablist">
+      {% for area in areas %}
+      <button class="tab-btn {% if loop.first %}active{% endif %}" data-tab="tab-{{ loop.index0 }}">{{ area }}</button>
+      {% endfor %}
+    </div>
+
+    {% for area in areas %}
+    <section id="tab-{{ loop.index0 }}" class="tab-panel {% if loop.first %}active{% endif %}">
+      <h2>{{ area }}</h2>
+
+      {% set area_alerts = alerts_by_area.get(area, []) %}
+      {% if area_alerts|length == 0 %}
+        <div class="empty">Sem alertas relevantes no momento.</div>
+      {% else %}
+        <div class="alerts-grid">
+          {% for alert in area_alerts %}
+          <article class="alert priority-{{ alert.prioridade }}">
+            <div class="meta">
+              <span>{{ alert.area }}</span>
+              <strong>{{ alert.prioridade|upper }}</strong>
+            </div>
+            <h3>{{ alert.titulo }}</h3>
+            <p>{{ alert.descricao }}</p>
+            <small>{{ alert.timestamp }}</small>
+          </article>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </section>
+    {% endfor %}
+  </main>
+
+  <script>
+    const buttons = document.querySelectorAll('.tab-btn');
+    const panels = document.querySelectorAll('.tab-panel');
+
+    buttons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const id = button.dataset.tab;
+        buttons.forEach((b) => b.classList.remove('active'));
+        panels.forEach((p) => p.classList.remove('active'));
+        button.classList.add('active');
+        document.getElementById(id).classList.add('active');
+      });
+    });
+  </script>
+</body>
+</html>
