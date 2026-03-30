@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import secrets
 from collections import defaultdict
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -22,8 +22,22 @@ templates.env.cache = None
 
 SESSIONS: dict[str, str] = {}
 
-
 AREAS = ["Diretoria", "Enfermagem", "UTI", "Centro Cirúrgico", "Farmácia"]
+
+
+METRIC_CATALOG: dict[str, dict[str, str | float]] = {
+    "ocupacao_percent": {"label": "Ocupação geral", "unit": "%", "warn": 85, "critical": 95},
+    "obitos_mes_atual": {"label": "Óbitos no mês", "unit": "", "warn": 15, "critical": 20},
+    "fila_total": {"label": "Fila total", "unit": "pacientes", "warn": 30, "critical": 40},
+    "tempo_medio_espera_min": {"label": "Tempo médio de espera", "unit": "min", "warn": 30, "critical": 45},
+    "ocupacao_uti_percent": {"label": "Ocupação da UTI", "unit": "%", "warn": 85, "critical": 90},
+    "pacientes_criticos": {"label": "Pacientes críticos", "unit": "pacientes", "warn": 12, "critical": 15},
+    "cirurgias_atrasadas": {"label": "Cirurgias atrasadas", "unit": "cirurgias", "warn": 5, "critical": 8},
+    "taxa_cancelamento_percent": {"label": "Taxa de cancelamento", "unit": "%", "warn": 8, "critical": 12},
+    "itens_ruptura": {"label": "Itens em ruptura", "unit": "itens", "warn": 0, "critical": 1},
+    "itens_alto_risco_baixo": {"label": "Itens de alto risco (baixo estoque)", "unit": "itens", "warn": 2, "critical": 3},
+}
+
 
 
 def _is_logged(request: Request) -> bool:
@@ -38,6 +52,96 @@ def _mock_metrics() -> dict[str, dict]:
         "UTI": {"ocupacao_uti_percent": 93.0, "pacientes_criticos": 16},
         "Centro Cirúrgico": {"cirurgias_atrasadas": 10, "taxa_cancelamento_percent": 9.5},
         "Farmácia": {"itens_ruptura": 2, "itens_alto_risco_baixo": 5},
+    }
+
+def _format_value(value: float | int | str, unit: str) -> str:
+    if isinstance(value, (int, float)):
+        if unit == "%":
+            return f"{float(value):.1f}%"
+        if float(value).is_integer():
+            number = f"{int(value)}"
+        else:
+            number = f"{float(value):.1f}"
+        return f"{number} {unit}".strip()
+    return str(value)
+
+
+def _status_from_threshold(value: float | int | str, warn: float | None, critical: float | None) -> str:
+    if not isinstance(value, (int, float)) or warn is None or critical is None:
+        return "informativo"
+    current = float(value)
+    if current > critical:
+        return "crítico"
+    if current > warn:
+        return "atenção"
+    return "controlado"
+
+
+def _build_metrics_view(area_metrics: dict[str, float | int | str]) -> list[dict[str, str]]:
+    cards: list[dict[str, str]] = []
+    for key, value in area_metrics.items():
+        meta = METRIC_CATALOG.get(key, {})
+        label = str(meta.get("label", key.replace("_", " ").capitalize()))
+        unit = str(meta.get("unit", ""))
+        warn = meta.get("warn")
+        critical = meta.get("critical")
+        cards.append(
+            {
+                "key": key,
+                "label": label,
+                "value": _format_value(value, unit),
+                "status": _status_from_threshold(
+                    value,
+                    warn if isinstance(warn, (int, float)) else None,
+                    critical if isinstance(critical, (int, float)) else None,
+                ),
+                "thresholds": f"Atenção > {warn} | Crítico > {critical}" if warn is not None and critical is not None else "Sem limite configurado",
+            }
+        )
+    return cards
+
+
+def _build_alert_details(alert: Alert, area_metrics: dict[str, float | int | str]) -> dict[str, str]:
+    title = alert.titulo.lower()
+    descricao = alert.descricao.lower()
+    metric_key = ""
+    if "ocupação" in title or "ocupação" in descricao:
+        metric_key = "ocupacao_uti_percent" if alert.area == "UTI" else "ocupacao_percent"
+    elif "óbito" in title or "óbito" in descricao:
+        metric_key = "obitos_mes_atual"
+    elif "fila" in descricao or "sobrecarga" in title:
+        metric_key = "fila_total"
+    elif "espera" in descricao:
+        metric_key = "tempo_medio_espera_min"
+    elif "crític" in title and alert.area == "UTI":
+        metric_key = "pacientes_criticos"
+    elif "atras" in title:
+        metric_key = "cirurgias_atrasadas"
+    elif "cancel" in title:
+        metric_key = "taxa_cancelamento_percent"
+    elif "ruptura" in descricao:
+        metric_key = "itens_ruptura"
+    elif "alto risco" in title:
+        metric_key = "itens_alto_risco_baixo"
+
+    metric_label = "Contexto geral"
+    metric_value = "Sem indicador relacionado"
+    threshold = "Sem limite configurado"
+    if metric_key and metric_key in area_metrics:
+        meta = METRIC_CATALOG.get(metric_key, {})
+        unit = str(meta.get("unit", ""))
+        metric_label = str(meta.get("label", metric_key))
+        metric_value = _format_value(area_metrics[metric_key], unit)
+        warn = meta.get("warn")
+        critical = meta.get("critical")
+        if warn is not None and critical is not None:
+            threshold = f"Atenção > {warn} | Crítico > {critical}"
+
+    return {
+        "related_metric_label": metric_label,
+        "related_metric_value": metric_value,
+        "related_metric_threshold": threshold,
+        "priority_label": {"alta": "Alta prioridade", "media": "Prioridade média", "baixa": "Baixa prioridade"}.get(alert.prioridade, "Informativo"),
     }
 
 
@@ -153,7 +257,18 @@ async def dashboard(request: Request):
     alerts = await _active_alerts_from_metrics(metrics_by_area)
     grouped = defaultdict(list)
     for alert in alerts:
-        grouped[alert.area].append(alert)
+          grouped[alert.area].append(
+            {
+                "alert": alert,
+                "details": _build_alert_details(alert, metrics_by_area.get(alert.area, {})),
+            }
+        )
+
+    all_alerts_view = [
+        {"alert": alert, "details": _build_alert_details(alert, metrics_by_area.get(alert.area, {}))}
+        for alert in alerts
+    ]
+    metrics_view_by_area = {area: _build_metrics_view(metrics_by_area.get(area, {})) for area in AREAS}
 
     return templates.TemplateResponse(
         request,
@@ -162,8 +277,8 @@ async def dashboard(request: Request):
             "request": request,
             "areas": AREAS,
             "alerts_by_area": dict(grouped),
-            "metrics_by_area": metrics_by_area,
-            "all_alerts": alerts,
+            "metrics_by_area": metrics_view_by_area,
+            "all_alerts": all_alerts_view,
             "generated_at": datetime.now(UTC),
         },
     )

@@ -22,14 +22,30 @@
         <div class="empty">Sem alertas relevantes no momento.</div>
       {% else %}
         <div class="alerts-grid">
-          {% for alert in all_alerts %}
+          {% for item in all_alerts %}
+          {% set alert = item.alert %}
+          {% set details = item.details %}
           <article class="alert priority-{{ alert.prioridade }}">
             <div class="meta">
               <span>{{ alert.area }}</span>
-              <strong>{{ alert.prioridade|upper }}</strong>
+              <strong>{{ details.priority_label }}</strong>
             </div>
             <h3>{{ alert.titulo }}</h3>
             <p>{{ alert.descricao }}</p>
+            <dl class="alert-details">
+              <div>
+                <dt>Indicador relacionado</dt>
+                <dd>{{ details.related_metric_label }}</dd>
+              </div>
+              <div>
+                <dt>Valor atual</dt>
+                <dd>{{ details.related_metric_value }}</dd>
+              </div>
+              <div>
+                <dt>Faixa de referência</dt>
+                <dd>{{ details.related_metric_threshold }}</dd>
+              </div>
+            </dl>
             <small>{{ alert.timestamp }}</small>
           </article>
           {% endfor %}
@@ -47,19 +63,35 @@
       <h2>{{ area }}</h2>
 
       {% set area_alerts = alerts_by_area.get(area, []) %}
-      {% set area_metrics = metrics_by_area.get(area, {}) %}
+      {% set area_metrics = metrics_by_area.get(area, []) %}
       {% if area_alerts|length == 0 %}
         <div class="empty">Sem alertas relevantes no momento.</div>
       {% else %}
         <div class="alerts-grid">
-          {% for alert in area_alerts %}
+          {% for item in area_alerts %}
+          {% set alert = item.alert %}
+          {% set details = item.details %}
           <article class="alert priority-{{ alert.prioridade }}">
             <div class="meta">
               <span>{{ alert.area }}</span>
-              <strong>{{ alert.prioridade|upper }}</strong>
+              <strong>{{ details.priority_label }}</strong>
             </div>
             <h3>{{ alert.titulo }}</h3>
             <p>{{ alert.descricao }}</p>
+            <dl class="alert-details">
+              <div>
+                <dt>Indicador relacionado</dt>
+                <dd>{{ details.related_metric_label }}</dd>
+              </div>
+              <div>
+                <dt>Valor atual</dt>
+                <dd>{{ details.related_metric_value }}</dd>
+              </div>
+              <div>
+                <dt>Faixa de referência</dt>
+                <dd>{{ details.related_metric_threshold }}</dd>
+              </div>
+            </dl>
             <small>{{ alert.timestamp }}</small>
           </article>
           {% endfor %}
@@ -67,21 +99,23 @@
       {% endif %}
 
        <section class="metrics-section">
-        <h3>Dados Obtidos</h3>
+        <h3>Indicadores monitorados</h3>
         {% if area_metrics|length == 0 %}
           <div class="empty">Nenhum dado disponível para esta área.</div>
         {% else %}
           <div class="metrics-grid">
-            {% for key, value in area_metrics.items() %}
-            <article class="metric-card">
-              <small>{{ key }}</small>
-              <strong>{{ value }}</strong>
+            {% for metric in area_metrics %}
+            <article class="metric-card metric-status-{{ metric.status }}">
+              <small>{{ metric.label }}</small>
+              <strong>{{ metric.value }}</strong>
+              <span>Status: {{ metric.status|capitalize }}</span>
+              <em>{{ metric.thresholds }}</em>
             </article>
             {% endfor %}
           </div>
         {% endif %}
       </section>
-      
+
     </section>
     {% endfor %}
   </main>
