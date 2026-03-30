@@ -4,6 +4,7 @@ import json
 from typing import Any
 
 import httpx
+from fastapi.encoders import jsonable_encoder
 
 from app.config import settings
 
@@ -30,7 +31,7 @@ async def contextual_validate(area: str, candidate_alert: dict[str, Any], metric
             {
                 "role": "user",
                 "content": json.dumps(
-                    {"area": area, "alerta": candidate_alert, "metricas": metrics},
+                    jsonable_encoder({"area": area, "alerta": candidate_alert, "metricas": metrics}),
                     ensure_ascii=False,
                 ),
             },

@@ -16,6 +16,26 @@
   </header>
 
   <main>
+     <section class="top-alerts">
+      <h2>Alertas Ativos (Todas as Áreas)</h2>
+      {% if all_alerts|length == 0 %}
+        <div class="empty">Sem alertas relevantes no momento.</div>
+      {% else %}
+        <div class="alerts-grid">
+          {% for alert in all_alerts %}
+          <article class="alert priority-{{ alert.prioridade }}">
+            <div class="meta">
+              <span>{{ alert.area }}</span>
+              <strong>{{ alert.prioridade|upper }}</strong>
+            </div>
+            <h3>{{ alert.titulo }}</h3>
+            <p>{{ alert.descricao }}</p>
+            <small>{{ alert.timestamp }}</small>
+          </article>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </section>
     <div class="tabs" role="tablist">
       {% for area in areas %}
       <button class="tab-btn {% if loop.first %}active{% endif %}" data-tab="tab-{{ loop.index0 }}">{{ area }}</button>
@@ -27,6 +47,7 @@
       <h2>{{ area }}</h2>
 
       {% set area_alerts = alerts_by_area.get(area, []) %}
+      {% set area_metrics = metrics_by_area.get(area, {}) %}
       {% if area_alerts|length == 0 %}
         <div class="empty">Sem alertas relevantes no momento.</div>
       {% else %}
@@ -44,6 +65,23 @@
           {% endfor %}
         </div>
       {% endif %}
+
+       <section class="metrics-section">
+        <h3>Dados Obtidos</h3>
+        {% if area_metrics|length == 0 %}
+          <div class="empty">Nenhum dado disponível para esta área.</div>
+        {% else %}
+          <div class="metrics-grid">
+            {% for key, value in area_metrics.items() %}
+            <article class="metric-card">
+              <small>{{ key }}</small>
+              <strong>{{ value }}</strong>
+            </article>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </section>
+      
     </section>
     {% endfor %}
   </main>

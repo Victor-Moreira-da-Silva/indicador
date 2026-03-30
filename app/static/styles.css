@@ -45,6 +45,7 @@ body { margin: 0; font-family: Arial, sans-serif; color: var(--ink); background:
 .topbar a { color: var(--primary); text-decoration: none; font-weight: 700; }
 main { padding: 20px 24px; }
 
+.top-alerts { margin-bottom: 20px; }
 .tabs { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
 .tab-btn {
   border: 1px solid #cbd5e1;
@@ -65,3 +66,17 @@ main { padding: 20px 24px; }
 .alert.priority-media { border-left-color: var(--med); }
 .alert.priority-baixa { border-left-color: var(--low); }
 .empty { padding: 18px; background: #fff; border-radius: 12px; border: 1px dashed #cbd5e1; }
+
+.metrics-section { margin-top: 18px; }
+.metrics-section h3 { margin: 0 0 10px; }
+.metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.metric-card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  display: grid;
+  gap: 6px;
+}
+.metric-card small { color: #475467; }
+.metric-card strong { font-size: 1.1rem; }

@@ -18,7 +18,7 @@ from app.services.db import fetch_rows, safe_first_number
 app = FastAPI(title="Monitoramento Hospitalar")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
-templates.env.cache = {}
+templates.env.cache = None
 
 SESSIONS: dict[str, str] = {}
 
@@ -98,6 +98,15 @@ async def _active_alerts() -> list[Alert]:
     return sorted(alerts, key=lambda x: (x.prioridade, x.timestamp), reverse=True)
 
 
+async def _active_alerts_from_metrics(metrics_by_area: dict[str, dict]) -> list[Alert]:
+    alerts: list[Alert] = []
+    for area in AREAS:
+        area_metrics = metrics_by_area.get(area, {})
+        alerts.extend(await analyze_area(area, area_metrics))
+    return sorted(alerts, key=lambda x: (x.prioridade, x.timestamp), reverse=True)
+
+
+
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
     if not _is_logged(request):
@@ -107,7 +116,7 @@ async def root(request: Request):
 
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
-    return templates.TemplateResponse("login.html", {"request": request, "error": None})
+    return templates.TemplateResponse(request, "login.html", {"request": request, "error": None})
 
 
 @app.post("/login", response_class=HTMLResponse)
@@ -119,6 +128,7 @@ async def login(request: Request, username: str = Form(...), password: str = For
         response.set_cookie("sid", sid, httponly=True)
         return response
     return templates.TemplateResponse(
+        request,
         "login.html",
         {"request": request, "error": "Usuário ou senha inválidos."},
         status_code=401,
@@ -139,17 +149,21 @@ async def logout(request: Request):
 async def dashboard(request: Request):
     if not _is_logged(request):
         return RedirectResponse(url="/login", status_code=302)
-    alerts = await _active_alerts()
+    metrics_by_area = _load_metrics_from_queries()
+    alerts = await _active_alerts_from_metrics(metrics_by_area)
     grouped = defaultdict(list)
     for alert in alerts:
         grouped[alert.area].append(alert)
 
     return templates.TemplateResponse(
+        request,
         "dashboard.html",
         {
             "request": request,
             "areas": AREAS,
             "alerts_by_area": dict(grouped),
+            "metrics_by_area": metrics_by_area,
+            "all_alerts": alerts,
             "generated_at": datetime.now(UTC),
         },
     )
