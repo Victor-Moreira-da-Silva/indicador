@@ -12,7 +12,7 @@ from fastapi.templating import Jinja2Templates
 from app.config import settings
 from app.models import Alert
 from app.queries import QUERIES
-from app.services.alerts import analyze_area
+from app.services.alerts import analyze_area, analyze_cross_queries
 from app.services.db import fetch_rows, safe_first_number
 
 app = FastAPI(title="Monitoramento Hospitalar")
@@ -236,6 +236,7 @@ def _load_metrics_from_queries() -> dict[str, dict]:
 
 async def _active_alerts() -> list[Alert]:
     metrics_by_area = _load_metrics_from_queries()
+    query_results_by_area = _load_query_results()
     alerts: list[Alert] = []
     for area in AREAS:
         area_metrics = metrics_by_area.get(area, {})
@@ -243,11 +244,15 @@ async def _active_alerts() -> list[Alert]:
     return sorted(alerts, key=lambda x: (x.prioridade, x.timestamp), reverse=True)
 
 
-async def _active_alerts_from_metrics(metrics_by_area: dict[str, dict]) -> list[Alert]:
+async def _active_alerts_from_metrics(
+    metrics_by_area: dict[str, dict],
+    query_results_by_area: dict[str, list[dict[str, object]]],
+) -> list[Alert]:
     alerts: list[Alert] = []
     for area in AREAS:
         area_metrics = metrics_by_area.get(area, {})
         alerts.extend(await analyze_area(area, area_metrics))
+        alerts.extend(await analyze_cross_queries(metrics_by_area, query_results_by_area))
     return sorted(alerts, key=lambda x: (x.prioridade, x.timestamp), reverse=True)
 
 
@@ -295,7 +300,8 @@ async def dashboard(request: Request):
     if not _is_logged(request):
         return RedirectResponse(url="/login", status_code=302)
     metrics_by_area = _load_metrics_from_queries()
-    alerts = await _active_alerts_from_metrics(metrics_by_area)
+    query_results_by_area = _load_query_results()
+    alerts = await _active_alerts_from_metrics(metrics_by_area, query_results_by_area)
     grouped = defaultdict(list)
     for alert in alerts:
           grouped[alert.area].append(
@@ -310,7 +316,6 @@ async def dashboard(request: Request):
         for alert in alerts
     ]
     metrics_view_by_area = {area: _build_metrics_view(metrics_by_area.get(area, {})) for area in AREAS}
-    query_results_by_area = _load_query_results()
 
     return templates.TemplateResponse(
         request,

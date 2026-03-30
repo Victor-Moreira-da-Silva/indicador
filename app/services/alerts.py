@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, UTC
 
 from app.models import Alert
-from app.services.ai import contextual_validate
+from app.services.ai import contextual_cross_analyze, contextual_validate
 
 
 def _new_alert(area: str, prioridade: str, titulo: str, descricao: str) -> dict:
@@ -63,4 +63,68 @@ async def analyze_area(area: str, metrics: dict) -> list[Alert]:
     for candidate in alerts:
         enriched = await contextual_validate(area, candidate, metrics)
         validated.append(Alert(**enriched))
+    return validated
+
+
+async def analyze_cross_queries(
+    metrics_by_area: dict[str, dict],
+    query_results_by_area: dict[str, list[dict]],
+) -> list[Alert]:
+    """Gera alertas de correlação entre áreas considerando todas as queries."""
+    candidates: list[dict] = []
+
+    for area, queries in query_results_by_area.items():
+        erro_count = len([q for q in queries if q.get("error")])
+        if erro_count > 0:
+            candidates.append(
+                _new_alert(
+                    area,
+                    "media",
+                    "Falha de coleta de dados",
+                    f"{erro_count} queries com erro podem comprometer a análise da área",
+                )
+            )
+
+    diretoria = metrics_by_area.get("Diretoria", {})
+    enfermagem = metrics_by_area.get("Enfermagem", {})
+    uti = metrics_by_area.get("UTI", {})
+    centro = metrics_by_area.get("Centro Cirúrgico", {})
+    farmacia = metrics_by_area.get("Farmácia", {})
+
+    if float(diretoria.get("ocupacao_percent", 0) or 0) > 95 and float(enfermagem.get("fila_total", 0) or 0) > 40:
+        candidates.append(
+            _new_alert(
+                "Diretoria",
+                "alta",
+                "Pressão assistencial sistêmica",
+                "Alta ocupação hospitalar associada à fila elevada na Enfermagem",
+            )
+        )
+
+    if float(uti.get("ocupacao_uti_percent", 0) or 0) > 90 and float(centro.get("cirurgias_atrasadas", 0) or 0) > 8:
+        candidates.append(
+            _new_alert(
+                "UTI",
+                "alta",
+                "Gargalo entre UTI e Centro Cirúrgico",
+                "Lotação da UTI combinada com atrasos cirúrgicos sugere bloqueio de fluxo assistencial",
+            )
+        )
+
+    if float(farmacia.get("itens_ruptura", 0) or 0) > 0 and float(centro.get("taxa_cancelamento_percent", 0) or 0) > 8:
+        candidates.append(
+            _new_alert(
+                "Farmácia",
+                "alta",
+                "Risco operacional por insumos",
+                "Ruptura de itens e aumento de cancelamentos indicam possível impacto de abastecimento",
+            )
+        )
+
+    ai_enriched = await contextual_cross_analyze(metrics_by_area, query_results_by_area, candidates)
+    validated: list[Alert] = []
+    for candidate in ai_enriched:
+        payload = dict(candidate)
+        payload.setdefault("timestamp", datetime.now(UTC))
+        validated.append(Alert(**payload))
     return validated
