@@ -144,6 +144,62 @@ def _build_alert_details(alert: Alert, area_metrics: dict[str, float | int | str
         "priority_label": {"alta": "Alta prioridade", "media": "Prioridade média", "baixa": "Baixa prioridade"}.get(alert.prioridade, "Informativo"),
     }
 
+def _build_ai_assistant_commentary(
+    metrics_by_area: dict[str, dict[str, float | int | str]],
+    query_results_by_area: dict[str, list[dict[str, object]]],
+    alerts: list[Alert],
+) -> dict[str, object]:
+    total_queries = sum(len(queries) for queries in query_results_by_area.values())
+    total_rows = sum(int(query.get("row_count", 0) or 0) for queries in query_results_by_area.values() for query in queries)
+    query_errors = sum(1 for queries in query_results_by_area.values() for query in queries if query.get("error"))
+    critical_alerts = [a for a in alerts if a.prioridade == "alta"]
+    medium_alerts = [a for a in alerts if a.prioridade == "media"]
+
+    area_pressure: list[tuple[str, float]] = []
+    for area, metrics in metrics_by_area.items():
+        score = 0.0
+        for key, value in metrics.items():
+            if not isinstance(value, (int, float)):
+                continue
+            meta = METRIC_CATALOG.get(key, {})
+            warn = meta.get("warn")
+            critical = meta.get("critical")
+            numeric = float(value)
+            if isinstance(critical, (int, float)) and numeric > float(critical):
+                score += 2.0
+            elif isinstance(warn, (int, float)) and numeric > float(warn):
+                score += 1.0
+        area_pressure.append((area, score))
+
+    area_pressure.sort(key=lambda item: item[1], reverse=True)
+    top_area = area_pressure[0][0] if area_pressure else "Sem área dominante"
+
+    insights: list[str] = []
+    if critical_alerts:
+        insights.append(f"{len(critical_alerts)} alertas de alta prioridade exigem resposta imediata.")
+    if query_errors:
+        insights.append(f"{query_errors} queries com erro podem reduzir a confiabilidade das análises.")
+    if total_rows > 0 and total_queries > 0:
+        avg_rows = round(total_rows / total_queries, 1)
+        insights.append(f"As consultas retornaram {total_rows} linhas no total (média de {avg_rows} por query).")
+    insights.append(f"Área com maior pressão operacional no momento: {top_area}.")
+
+    return {
+        "headline": "Assistente IA de Operações Hospitalares",
+        "summary": (
+            "O assistente cruza dados de todas as queries, gera alertas inteligentes e "
+            "destaca tendências para apoiar decisões táticas e estratégicas."
+        ),
+        "stats": [
+            {"label": "Queries monitoradas", "value": str(total_queries)},
+            {"label": "Linhas processadas", "value": str(total_rows)},
+            {"label": "Alertas críticos", "value": str(len(critical_alerts))},
+            {"label": "Alertas moderados", "value": str(len(medium_alerts))},
+            {"label": "Erros de consulta", "value": str(query_errors)},
+        ],
+        "insights": insights,
+    }
+
 def _humanize_query_name(key: str) -> str:
     return key.replace("_", " ").strip().title()
 
@@ -316,6 +372,7 @@ async def dashboard(request: Request):
         for alert in alerts
     ]
     metrics_view_by_area = {area: _build_metrics_view(metrics_by_area.get(area, {})) for area in AREAS}
+    ai_commentary = _build_ai_assistant_commentary(metrics_by_area, query_results_by_area, alerts)
 
     return templates.TemplateResponse(
         request,
@@ -327,6 +384,7 @@ async def dashboard(request: Request):
             "metrics_by_area": metrics_view_by_area,
             "query_results_by_area": query_results_by_area,
             "all_alerts": all_alerts_view,
+            "ai_commentary": ai_commentary,
             "generated_at": datetime.now(UTC),
         },
     )

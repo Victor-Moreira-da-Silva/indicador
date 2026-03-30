@@ -16,6 +16,32 @@
   </header>
 
   <main>
+
+    <section class="ai-hero">
+      <div>
+        <p class="kicker">IA Assistiva</p>
+        <h2>{{ ai_commentary.headline }}</h2>
+        <p>{{ ai_commentary.summary }}</p>
+      </div>
+      <div class="hero-stats">
+        {% for item in ai_commentary.stats %}
+        <article>
+          <small>{{ item.label }}</small>
+          <strong>{{ item.value }}</strong>
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="insights-section">
+      <h3>Comentários automáticos sobre os dados</h3>
+      <ul>
+        {% for insight in ai_commentary.insights %}
+        <li>{{ insight }}</li>
+        {% endfor %}
+      </ul>
+    </section>
+    
      <section class="top-alerts">
       <h2>Alertas Ativos (Todas as Áreas)</h2>
       {% if all_alerts|length == 0 %}
