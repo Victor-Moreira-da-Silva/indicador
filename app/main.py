@@ -144,6 +144,47 @@ def _build_alert_details(alert: Alert, area_metrics: dict[str, float | int | str
         "priority_label": {"alta": "Alta prioridade", "media": "Prioridade média", "baixa": "Baixa prioridade"}.get(alert.prioridade, "Informativo"),
     }
 
+def _humanize_query_name(key: str) -> str:
+    return key.replace("_", " ").strip().title()
+
+
+def _load_query_results(limit_rows: int = 20) -> dict[str, list[dict[str, object]]]:
+    query_results: dict[str, list[dict[str, object]]] = {}
+    for area in AREAS:
+        area_queries = QUERIES.get(area, {})
+        area_results: list[dict[str, object]] = []
+        for query_key, sql in area_queries.items():
+            try:
+                rows = fetch_rows(sql)
+                columns = list(rows[0].keys()) if rows else []
+                area_results.append(
+                    {
+                        "query_key": query_key,
+                        "query_label": _humanize_query_name(query_key),
+                        "row_count": len(rows),
+                        "columns": columns,
+                        "rows": rows[:limit_rows],
+                        "truncated": len(rows) > limit_rows,
+                        "error": None,
+                    }
+                )
+            except Exception as exc:
+                area_results.append(
+                    {
+                        "query_key": query_key,
+                        "query_label": _humanize_query_name(query_key),
+                        "row_count": 0,
+                        "columns": [],
+                        "rows": [],
+                        "truncated": False,
+                        "error": str(exc),
+                    }
+                )
+        query_results[area] = area_results
+    return query_results
+
+
+
 
 def _load_metrics_from_queries() -> dict[str, dict]:
     metrics = defaultdict(dict)
@@ -269,6 +310,7 @@ async def dashboard(request: Request):
         for alert in alerts
     ]
     metrics_view_by_area = {area: _build_metrics_view(metrics_by_area.get(area, {})) for area in AREAS}
+    query_results_by_area = _load_query_results()
 
     return templates.TemplateResponse(
         request,
@@ -278,6 +320,7 @@ async def dashboard(request: Request):
             "areas": AREAS,
             "alerts_by_area": dict(grouped),
             "metrics_by_area": metrics_view_by_area,
+            "query_results_by_area": query_results_by_area,
             "all_alerts": all_alerts_view,
             "generated_at": datetime.now(UTC),
         },

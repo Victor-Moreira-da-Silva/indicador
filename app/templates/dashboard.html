@@ -64,6 +64,7 @@
 
       {% set area_alerts = alerts_by_area.get(area, []) %}
       {% set area_metrics = metrics_by_area.get(area, []) %}
+      {% set area_queries = query_results_by_area.get(area, []) %}
       {% if area_alerts|length == 0 %}
         <div class="empty">Sem alertas relevantes no momento.</div>
       {% else %}
@@ -110,6 +111,57 @@
               <strong>{{ metric.value }}</strong>
               <span>Status: {{ metric.status|capitalize }}</span>
               <em>{{ metric.thresholds }}</em>
+            </article>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </section>
+
+      <section class="queries-section">
+        <h3>Dados das queries</h3>
+        {% if area_queries|length == 0 %}
+          <div class="empty">Nenhuma query configurada para esta área.</div>
+        {% else %}
+          <div class="query-list">
+            {% for query in area_queries %}
+            <article class="query-card">
+              <div class="query-card-header">
+                <div>
+                  <h4>{{ query.query_label }}</h4>
+                  <small>Chave: {{ query.query_key }}</small>
+                </div>
+                <span>{{ query.row_count }} registros</span>
+              </div>
+
+              {% if query.error %}
+                <div class="empty">Erro ao executar query: {{ query.error }}</div>
+              {% elif query.rows|length == 0 %}
+                <div class="empty">Sem dados para esta consulta.</div>
+              {% else %}
+                <div class="table-wrap">
+                  <table class="query-table">
+                    <thead>
+                      <tr>
+                        {% for col in query.columns %}
+                        <th>{{ col }}</th>
+                        {% endfor %}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for row in query.rows %}
+                      <tr>
+                        {% for col in query.columns %}
+                        <td>{{ row[col] }}</td>
+                        {% endfor %}
+                      </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+                {% if query.truncated %}
+                <small>Exibindo os primeiros 20 registros.</small>
+                {% endif %}
+              {% endif %}
             </article>
             {% endfor %}
           </div>

@@ -27,7 +27,19 @@ def fetch_rows(sql: str) -> list[dict]:
             cursor.execute(sql)
             columns = [col[0].lower() for col in cursor.description]
             rows = cursor.fetchall()
-            return [dict(zip(columns, row, strict=False)) for row in rows]
+            normalized_rows: list[dict] = []
+            for row in rows:
+                normalized_row: list[object] = []
+                for value in row:
+                    if isinstance(value, oracledb.LOB):
+                        try:
+                            normalized_row.append(value.read())
+                        except Exception:
+                            normalized_row.append("<LOB indisponível>")
+                    else:
+                        normalized_row.append(value)
+                normalized_rows.append(dict(zip(columns, normalized_row, strict=False)))
+            return normalized_rows
     finally:
         conn.close()
 
