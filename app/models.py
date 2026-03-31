@@ -4,7 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 Prioridade = Literal["baixa", "media", "alta"]
-Area = Literal["Diretoria", "Enfermagem", "UTI", "Centro Cirúrgico", "Farmácia"]
+Area = Literal["Diretoria", "Enfermagem", "UTI", "Centro Cirúrgico", "Farmácia", "Operações Integradas"]
 
 
 class Alert(BaseModel):

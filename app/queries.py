@@ -628,4 +628,126 @@ GROUP BY
  END
 """,
     },
+ "Operações Integradas": {
+        "tempo_medio_por_tipo_cirurgia": """
+SELECT
+    C.DS_CIRURGIA AS TIPO_CIRURGIA,
+    FLOOR(AVG((AC.DT_FIM_CIRURGIA - AC.DT_INICIO_CIRURGIA) * 24)) AS HORAS,
+    ROUND(MOD(AVG((AC.DT_FIM_CIRURGIA - AC.DT_INICIO_CIRURGIA) * 24) * 60, 60)) AS MINUTOS
+FROM DBAMV.AVISO_CIRURGIA AC
+JOIN DBAMV.CIRURGIA_AVISO CA ON CA.CD_AVISO_CIRURGIA = AC.CD_AVISO_CIRURGIA
+JOIN DBAMV.CIRURGIA C ON C.CD_CIRURGIA = CA.CD_CIRURGIA
+WHERE AC.TP_SITUACAO = 'R'
+  AND AC.DT_INICIO_CIRURGIA IS NOT NULL
+  AND AC.DT_FIM_CIRURGIA IS NOT NULL
+GROUP BY C.DS_CIRURGIA
+ORDER BY HORAS DESC, MINUTOS DESC
+""",
+        "cirurgias_realizadas_por_porte_12m": """
+SELECT to_char(dt_realizacao, 'mm/yyyy') mesano,
+       DECODE(cirurgia.TP_CIRURGIA, 'P', 'Pequeno Porte', 'M', 'Médio Porte', 'G', 'Grande Porte', 'E', 'Especial') porte,
+       COUNT(*) qtde
+FROM dbamv.aviso_cirurgia
+JOIN dbamv.cirurgia_aviso ON aviso_cirurgia.cd_aviso_cirurgia = cirurgia_aviso.cd_aviso_cirurgia
+JOIN dbamv.cirurgia ON cirurgia_aviso.cd_cirurgia = cirurgia.cd_cirurgia
+WHERE aviso_cirurgia.tp_situacao = 'R'
+  AND dt_realizacao >= Add_Months(Trunc(SYSDATE,'mm'),-12)
+  AND cd_multi_empresa IN (1)
+GROUP BY cirurgia.tp_cirurgia, To_Char(dt_realizacao, 'mm/yyyy')
+ORDER BY To_Date(mesano, 'mm/yyyy'), 2
+""",
+        "cirurgias_realizadas_por_medico": """
+SELECT TO_CHAR(aviso_cirurgia.dt_realizacao, 'YYYY-MM') AS mes,
+       prestador.nm_prestador AS medico,
+       COUNT(*) AS qtde
+FROM dbamv.aviso_cirurgia
+JOIN dbamv.cirurgia_aviso ON aviso_cirurgia.cd_aviso_cirurgia = cirurgia_aviso.cd_aviso_cirurgia
+JOIN dbamv.prestador_aviso
+  ON aviso_cirurgia.cd_aviso_cirurgia = prestador_aviso.cd_aviso_cirurgia
+ AND cirurgia_aviso.cd_cirurgia_aviso = prestador_aviso.cd_cirurgia_aviso
+JOIN dbamv.prestador ON prestador.cd_prestador = prestador_aviso.cd_prestador
+WHERE aviso_cirurgia.tp_situacao = 'R'
+  AND prestador_aviso.sn_principal = 'S'
+  AND aviso_cirurgia.cd_multi_empresa = 1
+GROUP BY TO_CHAR(aviso_cirurgia.dt_realizacao, 'YYYY-MM'), prestador.nm_prestador
+ORDER BY TO_CHAR(aviso_cirurgia.dt_realizacao, 'YYYY-MM'), qtde DESC
+""",
+        "os_manutencao_aberta_ate_12h": """
+SELECT CD_OS, TP_SITUACAO, DT_PEDIDO,
+       TRUNC((SYSDATE - DT_PEDIDO) * 24, 2) AS horas_em_aberto,
+       COALESCE(DS_SERVICO_GERAL, DS_SERVICO) AS descricao_os,
+       NM_SOLICITANTE
+FROM DBAMV.SOLICITACAO_OS
+WHERE CD_OFICINA = 5
+  AND TP_SITUACAO IN ('A','S')
+  AND (SYSDATE - DT_PEDIDO) * 24 <= 12
+ORDER BY horas_em_aberto DESC
+""",
+        "os_manutencao_aberta_12_24h": """
+SELECT CD_OS, TP_SITUACAO, DT_PEDIDO,
+       TRUNC((SYSDATE - DT_PEDIDO) * 24, 2) AS horas_em_aberto,
+       COALESCE(DS_SERVICO_GERAL, DS_SERVICO) AS descricao_os,
+       NM_SOLICITANTE
+FROM DBAMV.SOLICITACAO_OS
+WHERE CD_OFICINA = 5
+  AND TP_SITUACAO IN ('A','S')
+  AND (SYSDATE - DT_PEDIDO) * 24 > 12
+  AND (SYSDATE - DT_PEDIDO) * 24 <= 24
+ORDER BY horas_em_aberto DESC
+""",
+        "os_manutencao_aberta_mais_24h": """
+SELECT CD_OS, TP_SITUACAO, DT_PEDIDO,
+       TRUNC((SYSDATE - DT_PEDIDO) * 24, 2) AS horas_em_aberto,
+       COALESCE(DS_SERVICO_GERAL, DS_SERVICO) AS descricao_os,
+       NM_SOLICITANTE
+FROM DBAMV.SOLICITACAO_OS
+WHERE CD_OFICINA = 5
+  AND TP_SITUACAO IN ('A','S')
+  AND (SYSDATE - DT_PEDIDO) * 24 > 24
+ORDER BY horas_em_aberto DESC
+""",
+        "medicacao_administrada": """
+SELECT TO_CHAR(PM.DT_PRE_MED, 'DD/MM/YYYY') AS data_prescricao,
+       PM.CD_PRE_MED,
+       IPM.CD_ITPRE_MED,
+       PRD.DS_PRODUTO AS medicamento,
+       PR.NM_PRESTADOR AS medico
+FROM DBAMV.PRE_MED PM
+JOIN DBAMV.ITPRE_MED IPM ON IPM.CD_PRE_MED = PM.CD_PRE_MED
+JOIN DBAMV.PRODUTO PRD ON PRD.CD_PRODUTO = IPM.CD_PRODUTO
+JOIN DBAMV.PRESTADOR PR ON PR.CD_PRESTADOR = PM.CD_PRESTADOR
+WHERE IPM.CD_PRODUTO IS NOT NULL
+  AND NVL(IPM.SN_CANCELADO, 'N') = 'N'
+  AND UPPER(NVL(IPM.DS_ITPRE_MED, 'X')) NOT LIKE 'SE %'
+  AND UPPER(NVL(IPM.DS_ITPRE_MED, 'X')) NOT LIKE 'CONFORME%'
+  AND UPPER(NVL(IPM.DS_ITPRE_MED, 'X')) NOT LIKE 'EM CASO%'
+  AND UPPER(NVL(IPM.DS_ITPRE_MED, 'X')) NOT LIKE 'INFUNDIR%'
+ORDER BY PM.DT_PRE_MED DESC
+""",
+        "medicamentos_prescritos_por_medico": """
+SELECT P.NM_PRESTADOR AS medico,
+       COUNT(1) AS qtde_medicamentos
+FROM DBAMV.PRE_MED PM
+JOIN DBAMV.ITPRE_MED IPM ON IPM.CD_PRE_MED = PM.CD_PRE_MED
+JOIN DBAMV.PRESTADOR P ON P.CD_PRESTADOR = PM.CD_PRESTADOR
+WHERE PM.DT_PRE_MED >= TRUNC(ADD_MONTHS(SYSDATE, -12))
+  AND IPM.CD_PRODUTO IS NOT NULL
+  AND NVL(IPM.SN_CANCELADO, 'N') = 'N'
+GROUP BY P.NM_PRESTADOR
+""",
+        "atendimento_por_horario": """
+SELECT to_char(triagem_atendimento.dh_pre_atendimento,'DD/MM/RRRR') data,
+       to_char(triagem_atendimento.dh_pre_atendimento, 'hh24') horario,
+       count(*) quantidade
+FROM dbamv.triagem_atendimento
+JOIN dbamv.sacr_tempo_processo
+  ON sacr_tempo_processo.cd_triagem_atendimento = triagem_atendimento.cd_triagem_atendimento
+WHERE cd_tipo_tempo_processo = 1
+  AND trunc(triagem_atendimento.dh_pre_atendimento) = trunc(sysdate)
+  AND triagem_atendimento.cd_multi_empresa in(2)
+GROUP BY to_char(triagem_atendimento.dh_pre_atendimento,'DD/MM/RRRR'),
+         to_char(triagem_atendimento.dh_pre_atendimento, 'hh24')
+ORDER BY data DESC, horario DESC
+""",
+    },
 }

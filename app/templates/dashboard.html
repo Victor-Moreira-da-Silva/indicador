@@ -34,14 +34,26 @@
     </section>
 
     <section class="insights-section">
-      <h3>Comentários automáticos sobre os dados</h3>
-      <ul>
-        {% for insight in ai_commentary.insights %}
-        <li>{{ insight }}</li>
-        {% endfor %}
-      </ul>
+      <h3>Cruzamento IA intersetorial</h3>
+      {% if cross_sector_findings|length == 0 %}
+        <div class="empty">Sem achados intersetoriais relevantes no momento.</div>
+      {% else %}
+        <div class="query-list">
+          {% for finding in cross_sector_findings %}
+          <article class="query-card">
+            <div class="query-card-header">
+              <h4>{{ finding.title }}</h4>
+              <span class="query-classification query-{{ finding.classification|lower|replace('ã', 'a')|replace('ç', 'c') }}">
+                {{ finding.classification|capitalize }}
+              </span>
+            </div>
+            <p>{{ finding.summary }}</p>
+          </article>
+          {% endfor %}
+        </div>
+      {% endif %}
     </section>
-    
+
      <section class="top-alerts">
       <h2>Alertas Ativos (Todas as Áreas)</h2>
       {% if all_alerts|length == 0 %}
@@ -90,7 +102,7 @@
 
       {% set area_alerts = alerts_by_area.get(area, []) %}
       {% set area_metrics = metrics_by_area.get(area, []) %}
-      {% set area_queries = query_results_by_area.get(area, []) %}
+      {% set area_queries = query_analysis_by_area.get(area, []) %}
       {% if area_alerts|length == 0 %}
         <div class="empty">Sem alertas relevantes no momento.</div>
       {% else %}
@@ -116,9 +128,7 @@
               </div>
               <div>
                 <dt>Faixa de referência</dt>
-                <dd>{{ details.related_metric_threshold }}</dd>
-              </div>
-            </dl>
+@@ -96,95 +142,69 @@
             <small>{{ alert.timestamp }}</small>
           </article>
           {% endfor %}
@@ -144,9 +154,9 @@
       </section>
 
       <section class="queries-section">
-        <h3>Dados das queries</h3>
+        <h3>Análise IA (query por query)</h3>
         {% if area_queries|length == 0 %}
-          <div class="empty">Nenhuma query configurada para esta área.</div>
+          <div class="empty">Nenhuma query analisada para esta área.</div>
         {% else %}
           <div class="query-list">
             {% for query in area_queries %}
@@ -156,38 +166,12 @@
                   <h4>{{ query.query_label }}</h4>
                   <small>Chave: {{ query.query_key }}</small>
                 </div>
-                <span>{{ query.row_count }} registros</span>
+                <span class="query-classification query-{{ query.classification|lower|replace('ã', 'a')|replace('ç', 'c') }}">
+                  {{ query.classification|capitalize }}
+                </span>
               </div>
-
-              {% if query.error %}
-                <div class="empty">Erro ao executar query: {{ query.error }}</div>
-              {% elif query.rows|length == 0 %}
-                <div class="empty">Sem dados para esta consulta.</div>
-              {% else %}
-                <div class="table-wrap">
-                  <table class="query-table">
-                    <thead>
-                      <tr>
-                        {% for col in query.columns %}
-                        <th>{{ col }}</th>
-                        {% endfor %}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {% for row in query.rows %}
-                      <tr>
-                        {% for col in query.columns %}
-                        <td>{{ row[col] }}</td>
-                        {% endfor %}
-                      </tr>
-                      {% endfor %}
-                    </tbody>
-                  </table>
-                </div>
-                {% if query.truncated %}
-                <small>Exibindo os primeiros 20 registros.</small>
-                {% endif %}
-              {% endif %}
+              <p>{{ query.summary }}</p>
+              <small>{{ query.row_count }} registros processados nesta consulta.</small>
             </article>
             {% endfor %}
           </div>

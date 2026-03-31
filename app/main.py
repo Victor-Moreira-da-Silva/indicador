@@ -12,6 +12,7 @@ from fastapi.templating import Jinja2Templates
 from app.config import settings
 from app.models import Alert
 from app.queries import QUERIES
+from app.services.ai import contextual_query_analysis
 from app.services.alerts import analyze_area, analyze_cross_queries
 from app.services.db import fetch_rows, safe_first_number
 
@@ -22,7 +23,7 @@ templates.env.cache = None
 
 SESSIONS: dict[str, str] = {}
 
-AREAS = ["Diretoria", "Enfermagem", "UTI", "Centro Cirúrgico", "Farmácia"]
+AREAS = ["Diretoria", "Enfermagem", "UTI", "Centro Cirúrgico", "Farmácia", "Operações Integradas"]
 
 
 METRIC_CATALOG: dict[str, dict[str, str | float]] = {
@@ -200,6 +201,83 @@ def _build_ai_assistant_commentary(
         "insights": insights,
     }
 
+def _build_cross_sector_findings(
+    query_results_by_area: dict[str, list[dict[str, object]]],
+    metrics_by_area: dict[str, dict[str, float | int | str]],
+) -> list[dict[str, str]]:
+    integradas = {str(q.get("query_key")): q for q in query_results_by_area.get("Operações Integradas", [])}
+    enfermagem = metrics_by_area.get("Enfermagem", {})
+    farmacia = metrics_by_area.get("Farmácia", {})
+
+    findings: list[dict[str, str]] = []
+
+    presc_por_medico = int(integradas.get("medicamentos_prescritos_por_medico", {}).get("row_count", 0) or 0)
+    med_admin = int(integradas.get("medicacao_administrada", {}).get("row_count", 0) or 0)
+    if med_admin > 0 and presc_por_medico > 0:
+        findings.append(
+            {
+                "title": "Risco de vício/uso recorrente em medicação",
+                "classification": "atenção" if med_admin < 400 else "crítica",
+                "summary": (
+                    "Há volume relevante de administração medicamentosa. "
+                    "Cruzar frequência por paciente + classe terapêutica para identificar possível uso recorrente indevido."
+                ),
+            }
+        )
+
+    if presc_por_medico > 0:
+        findings.append(
+            {
+                "title": "Conferência de prescrição",
+                "classification": "atenção",
+                "summary": (
+                    "Prescrições por médico disponíveis para auditoria de conformidade. "
+                    "Recomendado validar protocolos e divergências por especialidade."
+                ),
+            }
+        )
+
+    os_12 = int(integradas.get("os_manutencao_aberta_ate_12h", {}).get("row_count", 0) or 0)
+    os_12_24 = int(integradas.get("os_manutencao_aberta_12_24h", {}).get("row_count", 0) or 0)
+    os_24 = int(integradas.get("os_manutencao_aberta_mais_24h", {}).get("row_count", 0) or 0)
+    if os_24 > 0:
+        findings.append(
+            {
+                "title": "Manutenção com fila envelhecida",
+                "classification": "crítica",
+                "summary": f"{os_24} OS acima de 24h em aberto: indício de capacidade insuficiente ou priorização inadequada.",
+            }
+        )
+    elif os_12 == 0 and os_12_24 == 0:
+        findings.append(
+            {
+                "title": "Possível ociosidade da manutenção",
+                "classification": "saudável",
+                "summary": "Sem OS abertas nas últimas janelas; validar escala para evitar subutilização da equipe.",
+            }
+        )
+
+    fila_total = float(enfermagem.get("fila_total", 0) or 0)
+    itens_baixos = float(farmacia.get("itens_alto_risco_baixo", 0) or 0)
+    if fila_total < 12 and itens_baixos <= 1:
+        findings.append(
+            {
+                "title": "Ociosidade potencial: Enfermagem e Farmácia",
+                "classification": "atenção",
+                "summary": "Baixo volume assistencial com baixo estresse de estoque. Avaliar remanejamento de equipe por turno.",
+            }
+        )
+    elif fila_total > 35 and itens_baixos >= 3:
+        findings.append(
+            {
+                "title": "Pressão simultânea: Enfermagem e Farmácia",
+                "classification": "crítica",
+                "summary": "Fila elevada combinada com itens de alto risco em baixa disponibilidade.",
+            }
+        )
+
+    return findings
+
 def _humanize_query_name(key: str) -> str:
     return key.replace("_", " ").strip().title()
 
@@ -358,6 +436,13 @@ async def dashboard(request: Request):
     metrics_by_area = _load_metrics_from_queries()
     query_results_by_area = _load_query_results()
     alerts = await _active_alerts_from_metrics(metrics_by_area, query_results_by_area)
+    query_analysis_by_area: dict[str, list[dict[str, object]]] = {}
+    for area in AREAS:
+        query_analysis_by_area[area] = await contextual_query_analysis(
+            area,
+            query_results_by_area.get(area, []),
+            metrics_by_area.get(area, {}),
+        )
     grouped = defaultdict(list)
     for alert in alerts:
           grouped[alert.area].append(
@@ -373,6 +458,7 @@ async def dashboard(request: Request):
     ]
     metrics_view_by_area = {area: _build_metrics_view(metrics_by_area.get(area, {})) for area in AREAS}
     ai_commentary = _build_ai_assistant_commentary(metrics_by_area, query_results_by_area, alerts)
+    cross_sector_findings = _build_cross_sector_findings(query_results_by_area, metrics_by_area)
 
     return templates.TemplateResponse(
         request,
@@ -382,9 +468,10 @@ async def dashboard(request: Request):
             "areas": AREAS,
             "alerts_by_area": dict(grouped),
             "metrics_by_area": metrics_view_by_area,
-            "query_results_by_area": query_results_by_area,
+            "query_analysis_by_area": query_analysis_by_area,
             "all_alerts": all_alerts_view,
             "ai_commentary": ai_commentary,
+            "cross_sector_findings": cross_sector_findings,
             "generated_at": datetime.now(UTC),
         },
     )

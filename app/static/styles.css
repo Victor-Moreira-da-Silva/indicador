@@ -168,19 +168,8 @@ main { padding: 20px 24px; }
   margin-bottom: 10px;
 }
 .query-card-header h4 { margin: 0 0 4px; }
-.table-wrap { overflow-x: auto; }
-.query-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: .9rem;
-}
-.query-table th, .query-table td {
+.query-classification {
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 4px 10px;
   border: 1px solid var(--line);
-  padding: 6px 8px;
-  text-align: left;
-}
-.query-table th { background: var(--card-2); }
-
-@media (max-width: 960px) {
-  .ai-hero { grid-template-columns: 1fr; }
-}
